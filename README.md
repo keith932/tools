@@ -24,8 +24,9 @@ curl -fsSL --retry 3 https://raw.githubusercontent.com/keith932/tools/main/falco
 - 默认目标组为 `misc1`，组 ID 为 `f21f4746723b4e4994c26d8b566fcab2`。支持 static / staticByID，动态组会报错。
 - 已有安装不升级、不重启、不覆盖 CID；健康检查通过后可补入组。
 - 检查服务 active、RFM false 和非空 AID，再以当前主机的 AID 调用入组 API。
-- 枚举目标组成员并交叉核对主机 `groups` 字段包含目标组 ID，才输出 `GROUP=VERIFIED_HOST_FIELD misc1`。
-- 入组失败不卸载已安装的 Sensor，返回非零状态。安装成功与入组成功分别判断。
+- 安装流程只提交一次入组请求，不等待或核验组成员同步；API 接受请求后输出 `GROUP=SUBMITTED misc1` 并正常退出。
+- `SUBMITTED` 表示请求已提交，实际入组以控制台稍后显示为准。需要核查时单独使用下面的 `--verify-group`。
+- API 明确拒绝请求、认证/权限错误或本地健康检查失败仍返回非零状态；不会卸载已安装的 Sensor。
 - 入组可能应用该组已有策略；脚本不会编辑策略、组规则或删除其他成员。
 - 本地健康检查不能证明系统受到官方支持，也不能代替控制台在线、策略和威胁检测验证。
 
@@ -47,4 +48,4 @@ FALCON_CLIENT_ID='你的ClientID' FALCON_CLIENT_SECRET='你的ClientSecret' bash
 - [Falcon Linux 安装脚本](https://developer.crowdstrike.com/falcon-sensor/scripts/bash/install/)
 - [主机组 API](https://developer.crowdstrike.com/api-reference/collections/host-group/)
 
-当前脚本已做离线模拟验证；租户里的实际入组问题仍需运行只读核查后确认。
+当前版本为 `2026-10-21.3`，已做离线模拟验证；实际入组结果以控制台或只读核查为准。

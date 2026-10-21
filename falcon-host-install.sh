@@ -176,25 +176,13 @@ def enroll(base, token, group_id, aid):
     if not re.match(r"[0-9a-fA-F]{32}\Z", aid) or aid == "0" * 32:
         raise RuntimeError("Invalid or missing host registration identifier")
     aid = aid.lower()
-    for attempt in range(12):
-        if is_member(base, token, group_id, aid):
-            return
-        # Exact device filter, additive action: never replaces the group or members.
-        payload = {
-            "ids": [group_id],
-            "action_parameters": [{"name": "filter", "value": "(device_id:['{}'])".format(aid)}],
-        }
-        try:
-            api(base, "/devices/entities/host-group-actions/v1?action_name=add-hosts", token, body=payload)
-        except APIError as exc:
-            # A new sensor may not yet be visible in cloud host inventory.
-            if exc.status not in (400, 404):
-                raise
-        if is_member(base, token, group_id, aid):
-            return
-        if attempt < 11:
-            time.sleep(5)
-    raise RuntimeError("Membership not confirmed after retries; sensor stays installed. Retry once host is visible online")
+    # Submit the additive action once. Cloud synchronization is asynchronous;
+    # installation does not wait for group membership to appear in inventory.
+    payload = {
+        "ids": [group_id],
+        "action_parameters": [{"name": "filter", "value": "(device_id:['{}'])".format(aid)}],
+    }
+    api(base, "/devices/entities/host-group-actions/v1?action_name=add-hosts", token, body=payload)
 
 
 def main():
@@ -221,7 +209,7 @@ def main():
         print("GROUP=VERIFIED_HOST_FIELD {}".format(group["name"]))
     else:
         enroll(base, token, group_id, aid)
-        print("GROUP=VERIFIED_HOST_FIELD {}".format(group["name"]))
+        print("GROUP=SUBMITTED {} (membership verification skipped)".format(group["name"]))
 
 
 if __name__ == "__main__":
@@ -236,7 +224,7 @@ join_misc1() {
     printf '%s\0%s\0%s\0%s\0%s\0%s\0' "$1" "$FALCON_CLIENT_ID" "$FALCON_CLIENT_SECRET" \
       "$FALCON_CLOUD" 'f21f4746723b4e4994c26d8b566fcab2' "${2:-}" | "$json_python" -c "$group_code"
 }
-printf 'SCRIPT_VERSION=2026-10-21.2\n'
+printf 'SCRIPT_VERSION=2026-10-21.3\n'
 case "${1:-install}" in
     install|--verify-group) ;;
     *) echo 'Usage: bash falcon-host-install.sh [--verify-group]'; exit 2 ;;
@@ -336,4 +324,4 @@ fi
 # The registration identifier stays in process memory and is not logged.
 join_misc1 enroll "$aid_value"
 unset FALCON_CLIENT_ID FALCON_CLIENT_SECRET aid aid_value
-printf '完成：%s 已安装/健康检查通过，并确认加入 misc1\n' "$(hostname)"
+printf '完成：%s 已安装/健康检查通过，已提交 misc1 入组请求（跳过结果核验）\n' "$(hostname)"
