@@ -182,7 +182,15 @@ def enroll(base, token, group_id, aid):
         "ids": [group_id],
         "action_parameters": [{"name": "filter", "value": "(device_id:['{}'])".format(aid)}],
     }
-    api(base, "/devices/entities/host-group-actions/v1?action_name=add-hosts", token, body=payload)
+    try:
+        api(base, "/devices/entities/host-group-actions/v1?action_name=add-hosts", token, body=payload)
+    except APIError as exc:
+        if exc.status == 409:
+            # A conflict does not establish membership. Preserve the warning,
+            # but do not report a healthy sensor installation as failed.
+            return False
+        raise
+    return True
 
 
 def main():
@@ -208,8 +216,10 @@ def main():
         diagnose(base, token, group_id, aid)
         print("GROUP=VERIFIED_HOST_FIELD {}".format(group["name"]))
     else:
-        enroll(base, token, group_id, aid)
-        print("GROUP=SUBMITTED {} (membership verification skipped)".format(group["name"]))
+        if enroll(base, token, group_id, aid):
+            print("GROUP=SUBMITTED {} (membership verification skipped)".format(group["name"]))
+        else:
+            print("GROUP=WARNING_HTTP_409 {} (request conflicted; membership unconfirmed; installation continues)".format(group["name"]))
 
 
 if __name__ == "__main__":
@@ -224,7 +234,7 @@ join_misc1() {
     printf '%s\0%s\0%s\0%s\0%s\0%s\0' "$1" "$FALCON_CLIENT_ID" "$FALCON_CLIENT_SECRET" \
       "$FALCON_CLOUD" 'f21f4746723b4e4994c26d8b566fcab2' "${2:-}" | "$json_python" -c "$group_code"
 }
-printf 'SCRIPT_VERSION=2026-10-21.3\n'
+printf 'SCRIPT_VERSION=2026-10-21.4\n'
 case "${1:-install}" in
     install|--verify-group) ;;
     *) echo 'Usage: bash falcon-host-install.sh [--verify-group]'; exit 2 ;;
@@ -324,4 +334,4 @@ fi
 # The registration identifier stays in process memory and is not logged.
 join_misc1 enroll "$aid_value"
 unset FALCON_CLIENT_ID FALCON_CLIENT_SECRET aid aid_value
-printf '完成：%s 已安装/健康检查通过，已提交 misc1 入组请求（跳过结果核验）\n' "$(hostname)"
+printf '完成：%s 已安装/健康检查通过；入组请求结果见 GROUP 状态（跳过结果核验）\n' "$(hostname)"

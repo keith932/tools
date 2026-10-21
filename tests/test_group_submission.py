@@ -58,6 +58,31 @@ class SubmissionTests(unittest.TestCase):
                 with self.assertRaises(type(error)):
                     self.code["enroll"]("unused", "fake-token", GROUP_ID, AID)
 
+    def test_conflict_warns_without_claiming_submission_or_membership(self):
+        calls = []
+
+        def api(base, route, token=None, body=None, form=None):
+            calls.append(route)
+            if route == "/oauth2/token":
+                return {"access_token": "fake-token"}
+            if route.startswith("/devices/entities/host-groups/v1?"):
+                return {"resources": [{"id": GROUP_ID, "name": "misc1", "group_type": "static"}]}
+            if route == "/devices/entities/host-group-actions/v1?action_name=add-hosts":
+                raise self.code["APIError"](409, route)
+            self.fail("Unexpected membership poll: " + route)
+
+        self.code["api"] = api
+        request = "\0".join(["enroll", "fake-id", "fake-secret", "us-1", GROUP_ID, AID, ""])
+        output = io.StringIO()
+        with patch("sys.stdin", io.BytesIO(request.encode())), contextlib.redirect_stdout(output), patch(
+            "time.sleep", side_effect=AssertionError("must not wait or retry conflicts")
+        ):
+            self.code["main"]()
+        self.assertIn("GROUP=WARNING_HTTP_409 misc1", output.getvalue())
+        for false_status in ("GROUP=SUBMITTED", "GROUP=VERIFIED", "GROUP=FAILED"):
+            self.assertNotIn(false_status, output.getvalue())
+        self.assertEqual(sum("action_name=add-hosts" in route for route in calls), 1)
+
     def test_invalid_aid_cannot_submit(self):
         def api(*args, **kwargs):
             self.fail("invalid AID must not reach API")
